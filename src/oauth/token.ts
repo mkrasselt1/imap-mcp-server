@@ -87,6 +87,9 @@ function handleRefreshToken(req: any, res: any) {
   if (token.refresh_token_expires_at && new Date(token.refresh_token_expires_at) < new Date()) {
     return res.status(400).json({ error: "invalid_grant", error_description: "Refresh token expired" });
   }
+  if (client_id && token.client_id !== client_id) {
+    return res.status(400).json({ error: "invalid_grant", error_description: "Client mismatch" });
+  }
 
   // Revoke old token (rotation)
   db.prepare("UPDATE oauth_tokens SET revoked = 1 WHERE id = ?").run(token.id);

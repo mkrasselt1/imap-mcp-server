@@ -1,10 +1,23 @@
-import { createHash } from "crypto";
+import { randomBytes, scryptSync, timingSafeEqual, createHash } from "crypto";
 import { v4 as uuid } from "uuid";
 import { getDb } from "../db/database.js";
 import type { User } from "../types.js";
 
 function hashPassword(password: string): string {
-  return createHash("sha256").update(password).digest("hex");
+  const salt = randomBytes(16).toString("hex");
+  const hash = scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, storedHash: string): boolean {
+  // Support legacy SHA256 hashes (no colon) for migration
+  if (!storedHash.includes(":")) {
+    return createHash("sha256").update(password).digest("hex") === storedHash;
+  }
+  const [salt, hash] = storedHash.split(":");
+  const hashBuffer = Buffer.from(hash, "hex");
+  const supplied = scryptSync(password, salt, 64);
+  return timingSafeEqual(hashBuffer, supplied);
 }
 
 export function createUser(username: string, password: string): User {
@@ -23,8 +36,7 @@ export function verifyUser(username: string, password: string): User | null {
     .prepare("SELECT * FROM users WHERE username = ?")
     .get(username) as User | undefined;
   if (!user) return null;
-  const hash = hashPassword(password);
-  if (hash !== user.password_hash) return null;
+  if (!verifyPassword(password, user.password_hash)) return null;
   return user;
 }
 
@@ -37,7 +49,13 @@ export function ensureDefaultUser(): void {
   const db = getDb();
   const count = db.prepare("SELECT COUNT(*) as c FROM users").get() as { c: number };
   if (count.c === 0) {
-    createUser("admin", "admin");
-    console.log("Created default user: admin / admin");
+    const password = randomBytes(16).toString("base64url");
+    createUser("admin", password);
+    console.log("========================================");
+    console.log("  Default user created:");
+    console.log(`  Username: admin`);
+    console.log(`  Password: ${password}`);
+    console.log("  CHANGE THIS PASSWORD IMMEDIATELY!");
+    console.log("========================================");
   }
 }

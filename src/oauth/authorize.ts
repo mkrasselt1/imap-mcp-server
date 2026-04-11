@@ -4,6 +4,7 @@ import { getDb } from "../db/database.js";
 import { getAccountsByUser } from "../imap/accounts.js";
 import { SCOPES } from "../types.js";
 import type { OAuthClient } from "../types.js";
+import { escapeHtml } from "../web/views/escapeHtml.js";
 
 const router = Router();
 
@@ -101,11 +102,11 @@ function renderConsentPage(opts: {
     .join("\n");
 
   const accountOptions = opts.accounts
-    .map((a) => `<option value="${a.id}">${a.label}</option>`)
+    .map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.label)}</option>`)
     .join("\n");
 
   const hiddenFields = Object.entries(opts.query)
-    .map(([k, v]) => `<input type="hidden" name="${k}" value="${v}">`)
+    .map(([k, v]) => `<input type="hidden" name="${escapeHtml(k)}" value="${escapeHtml(v)}">`)
     .join("\n");
 
   return `<!DOCTYPE html>
@@ -122,7 +123,7 @@ function renderConsentPage(opts: {
 </head><body>
 <div class="card">
   <h2>Authorize Access</h2>
-  <p><strong>${opts.clientName}</strong> wants to access your email.</p>
+  <p><strong>${escapeHtml(opts.clientName)}</strong> wants to access your email.</p>
 
   <form method="POST" action="/oauth/authorize">
     ${hiddenFields}

@@ -22,18 +22,28 @@ import "./types.js";
 
 const app = express();
 
+// Security headers
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
+
 // Middleware
 app.use(cors({
-  origin: true,
+  origin: config.corsOrigin || true,
   credentials: true,
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+const isHttps = config.baseUrl.startsWith("https");
 app.use(session({
   secret: config.sessionSecret,
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 },
+  cookie: { secure: isHttps, httpOnly: true, sameSite: "lax", maxAge: 24 * 60 * 60 * 1000 },
 }));
 
 // Initialize DB
@@ -96,7 +106,7 @@ app.get("/mcp", bearerAuth as any, async (req: any, res: any) => {
   await transport.handleRequest(req, res);
 });
 
-app.delete("/mcp", async (req, res) => {
+app.delete("/mcp", bearerAuth as any, async (req: any, res: any) => {
   const sessionId = req.headers["mcp-session-id"] as string | undefined;
   if (sessionId && mcpSessions.has(sessionId)) {
     const { transport, server } = mcpSessions.get(sessionId)!;

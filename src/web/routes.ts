@@ -3,6 +3,7 @@ import { verifyUser, getUserById, createUser } from "../auth/users.js";
 import { getAccountsByUser, createAccount, deleteAccount } from "../imap/accounts.js";
 import { getDb } from "../db/database.js";
 import { layout } from "./views/layout.js";
+import { escapeHtml } from "./views/escapeHtml.js";
 import type { OAuthToken } from "../types.js";
 
 const router = Router();
@@ -13,7 +14,7 @@ router.get("/login", (req, res) => {
   res.send(layout("Login", `
     <div class="card">
       <h2>Login</h2>
-      ${error ? `<div class="error">${error}</div>` : ""}
+      ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
       <form method="POST" action="/login">
         <label>Username</label>
         <input type="text" name="username" required autofocus>
@@ -87,9 +88,9 @@ router.get("/dashboard", requireLogin, (req, res) => {
 
   const accountRows = accounts.map(a => `
     <tr>
-      <td><strong>${a.label}</strong></td>
-      <td>${a.username}</td>
-      <td>${a.imap_host}:${a.imap_port}</td>
+      <td><strong>${escapeHtml(a.label)}</strong></td>
+      <td>${escapeHtml(a.username)}</td>
+      <td>${escapeHtml(a.imap_host)}:${a.imap_port}</td>
       <td>
         <form method="POST" action="/accounts/${a.id}/delete" style="display:inline;">
           <button class="btn-danger" style="margin:0;padding:4px 12px;font-size:12px;">Delete</button>
@@ -174,16 +175,26 @@ router.get("/accounts/add", requireLogin, (req, res) => {
 });
 
 router.post("/accounts/add", requireLogin, (req, res) => {
+  const imapPort = parseInt(req.body.imap_port, 10);
+  const smtpPort = req.body.smtp_port ? parseInt(req.body.smtp_port, 10) : undefined;
+
+  if (isNaN(imapPort) || imapPort < 1 || imapPort > 65535) {
+    return res.status(400).send("Invalid IMAP port (must be 1-65535)");
+  }
+  if (smtpPort !== undefined && (isNaN(smtpPort) || smtpPort < 1 || smtpPort > 65535)) {
+    return res.status(400).send("Invalid SMTP port (must be 1-65535)");
+  }
+
   createAccount({
     userId: req.session.userId!,
     label: req.body.label,
     imapHost: req.body.imap_host,
-    imapPort: parseInt(req.body.imap_port, 10),
+    imapPort,
     imapTls: req.body.imap_tls === "1",
     username: req.body.username,
     password: req.body.password,
     smtpHost: req.body.smtp_host || undefined,
-    smtpPort: req.body.smtp_port ? parseInt(req.body.smtp_port, 10) : undefined,
+    smtpPort,
     smtpTls: req.body.smtp_tls === "1",
   });
   res.redirect("/dashboard");

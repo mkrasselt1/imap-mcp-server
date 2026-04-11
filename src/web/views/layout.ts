@@ -1,7 +1,9 @@
+import { escapeHtml } from "./escapeHtml.js";
+
 export function layout(title: string, body: string, username?: string): string {
   return `<!DOCTYPE html>
 <html><head>
-<title>${title} - IMAP Bridge</title>
+<title>${escapeHtml(title)} - IMAP Bridge</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
@@ -32,7 +34,7 @@ export function layout(title: string, body: string, username?: string): string {
   <strong>IMAP Bridge</strong>
   <div>
     ${username
-      ? `<span>${username}</span><a href="/dashboard">Dashboard</a><a href="/logout">Logout</a>`
+      ? `<span>${escapeHtml(username)}</span><a href="/dashboard">Dashboard</a><a href="/logout">Logout</a>`
       : `<a href="/login">Login</a>`
     }
   </div>

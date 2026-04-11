@@ -36,7 +36,7 @@ export async function sendMail(ctx: TokenContext, args: {
     port: account.smtp_port,
     secure: account.smtp_tls === 1 && account.smtp_port === 465,
     auth: { user: account.username, pass: password },
-    tls: { rejectUnauthorized: false },
+    tls: { rejectUnauthorized: true },
   });
 
   const info = await transport.sendMail({
