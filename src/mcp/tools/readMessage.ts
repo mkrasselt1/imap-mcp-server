@@ -45,9 +45,9 @@ export async function readMessage(ctx: TokenContext, args: { folder?: string; ui
     return {
       uid: (msg as any).uid,
       subject: envelope?.subject || "(no subject)",
-      from: envelope?.from?.map((a: any) => ({ name: a.name, address: `${a.mailbox}@${a.host}` })) || [],
-      to: envelope?.to?.map((a: any) => ({ name: a.name, address: `${a.mailbox}@${a.host}` })) || [],
-      cc: envelope?.cc?.map((a: any) => ({ name: a.name, address: `${a.mailbox}@${a.host}` })) || [],
+      from: envelope?.from?.map((a: any) => ({ name: a.name, address: a.address })) || [],
+      to: envelope?.to?.map((a: any) => ({ name: a.name, address: a.address })) || [],
+      cc: envelope?.cc?.map((a: any) => ({ name: a.name, address: a.address })) || [],
       date: envelope?.date?.toISOString() || null,
       flags: Array.from(flags || []),
       body: cleanText || textBody || "(could not extract body)",

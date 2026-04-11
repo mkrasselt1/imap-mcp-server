@@ -27,8 +27,8 @@ export async function listMessages(ctx: TokenContext, args: { folder?: string; p
         uid: (msg as any).uid,
         seq: (msg as any).seq,
         subject: (msg as any).envelope?.subject || "(no subject)",
-        from: (msg as any).envelope?.from?.map((a: any) => ({ name: a.name, address: `${a.mailbox}@${a.host}` })) || [],
-        to: (msg as any).envelope?.to?.map((a: any) => ({ name: a.name, address: `${a.mailbox}@${a.host}` })) || [],
+        from: (msg as any).envelope?.from?.map((a: any) => ({ name: a.name, address: a.address })) || [],
+        to: (msg as any).envelope?.to?.map((a: any) => ({ name: a.name, address: a.address })) || [],
         date: (msg as any).envelope?.date?.toISOString() || null,
         flags: Array.from((msg as any).flags || []),
       });
