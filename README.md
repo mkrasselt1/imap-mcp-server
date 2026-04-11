@@ -1,5 +1,7 @@
 # IMAP MCP Server
 
+[![Docker Hub](https://img.shields.io/docker/v/mkrasselt1/imap-mcp-server?label=Docker%20Hub)](https://hub.docker.com/r/mkrasselt1/imap-mcp-server)
+
 A multi-agent, multi-user HTTP IMAP bridge that acts as a remote [MCP](https://modelcontextprotocol.io/) server with built-in OAuth 2.1 authorization. Designed to let AI agents (like Claude.ai) securely access email on behalf of users, with granular per-agent permission control.
 
 ## Features
