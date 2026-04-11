@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends dumb-init && rm
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chown node:node /app/data
 VOLUME /app/data
 EXPOSE 3000
 USER node
