@@ -127,9 +127,9 @@ Claude.ai                          IMAP Bridge                    User
 | Tool | Scope Required | Description |
 |------|---------------|-------------|
 | `list_folders` | `mail:folders` | List all mailbox folders |
-| `list_messages` | `mail:read` | List messages with pagination |
-| `read_message` | `mail:read` | Read full message by UID |
-| `search_messages` | `mail:search` | Search by sender, date, subject, body |
+| `list_messages` | `mail:read` | List messages with pagination. Supports `includeBody` to fetch message content inline. |
+| `read_message` | `mail:read` | Read full message by UID. Supports `uids` array to batch-read up to 10 messages in one call. |
+| `search_messages` | `mail:search` | Search by sender, date, subject, body. Supports `includeBody` to fetch message content inline. |
 | `move_message` | `mail:modify` | Move message between folders |
 | `flag_message` | `mail:modify` | Set read/unread, star, delete flags |
 | `send_mail` | `mail:send` | Send email via SMTP |
@@ -153,6 +153,8 @@ npm start       # run compiled output
 - **Encryption key** — keep your `ENCRYPTION_KEY` safe; losing it means stored IMAP passwords become unrecoverable
 - **Token revocation** — users can revoke agent tokens from the dashboard at any time
 - **PKCE enforced** — all OAuth flows require Proof Key for Code Exchange (S256)
+- **Content Security Policy** — restrictive CSP prevents XSS and framing attacks
+- **Token refresh** — access tokens expire after 1 hour; MCP clients automatically refresh using the refresh token (30-day lifetime)
 
 ## License
 
