@@ -15,9 +15,11 @@ export function bearerAuth(req: Request, res: Response, next: NextFunction) {
   ).get(accessToken) as OAuthToken | undefined;
 
   if (!token) {
+    res.setHeader("WWW-Authenticate", 'Bearer error="invalid_token"');
     return res.status(401).json({ error: "invalid_token" });
   }
   if (new Date(token.access_token_expires_at) < new Date()) {
+    res.setHeader("WWW-Authenticate", 'Bearer error="invalid_token", error_description="Token expired"');
     return res.status(401).json({ error: "invalid_token", error_description: "Token expired" });
   }
 

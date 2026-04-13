@@ -12,7 +12,10 @@ function hashPassword(password: string): string {
 function verifyPassword(password: string, storedHash: string): boolean {
   // Support legacy SHA256 hashes (no colon) for migration
   if (!storedHash.includes(":")) {
-    return createHash("sha256").update(password).digest("hex") === storedHash;
+    const supplied = createHash("sha256").update(password).digest("hex");
+    const a = Buffer.from(supplied, "hex");
+    const b = Buffer.from(storedHash, "hex");
+    return a.length === b.length && timingSafeEqual(a, b);
   }
   const [salt, hash] = storedHash.split(":");
   const hashBuffer = Buffer.from(hash, "hex");

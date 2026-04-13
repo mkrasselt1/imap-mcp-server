@@ -40,11 +40,12 @@ export function createMcpServer(sessionId: string): McpServer {
 
   server.tool(
     "list_messages",
-    "List email messages in a folder with pagination",
+    "List email messages in a folder with pagination. Use includeBody=true to get message content inline and avoid separate read_message calls.",
     {
       folder: z.string().optional().default("INBOX").describe("Mailbox folder path"),
       page: z.number().optional().default(1).describe("Page number (1-based)"),
       pageSize: z.number().optional().default(20).describe("Messages per page (max 50)"),
+      includeBody: z.boolean().optional().default(false).describe("Include message body preview (up to 2000 chars each) — saves separate read_message calls"),
     },
     async (args) => {
       const ctx = getSessionContext(sessionId)!;
@@ -55,10 +56,11 @@ export function createMcpServer(sessionId: string): McpServer {
 
   server.tool(
     "read_message",
-    "Read a specific email message by UID including headers and body",
+    "Read full email message(s) by UID including headers and body. Use 'uids' to read multiple messages in one call (up to 10).",
     {
       folder: z.string().optional().default("INBOX").describe("Mailbox folder path"),
-      uid: z.number().describe("Message UID"),
+      uid: z.number().describe("Message UID (for single message)"),
+      uids: z.array(z.number()).optional().describe("Multiple message UIDs to read at once (max 10) — more efficient than separate calls"),
     },
     async (args) => {
       const ctx = getSessionContext(sessionId)!;
@@ -69,7 +71,7 @@ export function createMcpServer(sessionId: string): McpServer {
 
   server.tool(
     "search_messages",
-    "Search email messages by various criteria",
+    "Search email messages by various criteria. Use includeBody=true to get message content inline and avoid separate read_message calls.",
     {
       folder: z.string().optional().default("INBOX").describe("Mailbox folder path"),
       query: z.string().optional().describe("Search text (subject and body)"),
@@ -79,6 +81,7 @@ export function createMcpServer(sessionId: string): McpServer {
       before: z.string().optional().describe("Messages before date (YYYY-MM-DD)"),
       unseen: z.boolean().optional().describe("Only unread messages"),
       limit: z.number().optional().default(20).describe("Max results"),
+      includeBody: z.boolean().optional().default(false).describe("Include message body preview (up to 2000 chars each) — saves separate read_message calls"),
     },
     async (args) => {
       const ctx = getSessionContext(sessionId)!;

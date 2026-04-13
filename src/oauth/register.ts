@@ -11,6 +11,17 @@ function handleRegister(req: any, res: any) {
     return res.status(400).json({ error: "invalid_client_metadata", error_description: "redirect_uris required" });
   }
 
+  for (const uri of redirect_uris) {
+    try {
+      const parsed = new URL(uri);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        return res.status(400).json({ error: "invalid_client_metadata", error_description: "redirect_uris must use http or https" });
+      }
+    } catch {
+      return res.status(400).json({ error: "invalid_client_metadata", error_description: "redirect_uris must be valid URLs" });
+    }
+  }
+
   const clientId = uuid();
   const db = getDb();
 

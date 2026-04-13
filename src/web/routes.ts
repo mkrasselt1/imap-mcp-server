@@ -38,7 +38,9 @@ router.post("/login", (req, res) => {
   req.session.userId = user.id;
   const returnTo = req.session.returnTo;
   delete req.session.returnTo;
-  res.redirect(returnTo || "/dashboard");
+  // Prevent open redirect: only allow relative paths starting with /
+  const safeReturnTo = returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//") ? returnTo : "/dashboard";
+  res.redirect(safeReturnTo);
 });
 
 // -- Signup --
@@ -59,6 +61,17 @@ router.get("/signup", (req, res) => {
 
 router.post("/signup", (req, res) => {
   const { username, password } = req.body;
+
+  if (!username || typeof username !== "string" || username.length < 3 || username.length > 64) {
+    return res.redirect("/login?error=Username+must+be+3-64+characters");
+  }
+  if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+    return res.redirect("/login?error=Username+contains+invalid+characters");
+  }
+  if (!password || typeof password !== "string" || password.length < 8 || password.length > 128) {
+    return res.redirect("/login?error=Password+must+be+8-128+characters");
+  }
+
   try {
     const user = createUser(username, password);
     req.session.userId = user.id;
@@ -101,9 +114,9 @@ router.get("/dashboard", requireLogin, (req, res) => {
 
   const tokenRows = tokens.map(t => `
     <tr>
-      <td>${t.client_id.slice(0, 8)}...</td>
-      <td>${t.scopes}</td>
-      <td class="small">${t.access_token_expires_at}</td>
+      <td>${escapeHtml(t.client_id.slice(0, 8))}...</td>
+      <td>${escapeHtml(t.scopes)}</td>
+      <td class="small">${escapeHtml(t.access_token_expires_at)}</td>
       <td>
         <form method="POST" action="/tokens/${t.id}/revoke" style="display:inline;">
           <button class="btn-danger" style="margin:0;padding:4px 12px;font-size:12px;">Revoke</button>

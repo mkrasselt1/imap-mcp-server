@@ -55,6 +55,22 @@ router.post("/oauth/authorize", (req, res) => {
   }
 
   const { client_id, redirect_uri, state, code_challenge, code_challenge_method, account_id } = req.body;
+
+  if (!client_id || !redirect_uri || !code_challenge) {
+    return res.status(400).send("Missing required parameters");
+  }
+
+  // Validate client and redirect_uri match registration
+  const db = getDb();
+  const client = db.prepare("SELECT * FROM oauth_clients WHERE client_id = ?").get(client_id) as OAuthClient | undefined;
+  if (!client) {
+    return res.status(400).send("Unknown client_id");
+  }
+  const allowedUris: string[] = JSON.parse(client.redirect_uris);
+  if (!allowedUris.includes(redirect_uri)) {
+    return res.status(400).send("redirect_uri not registered for this client");
+  }
+
   const grantedScopes: string[] = [];
 
   // Collect checked scopes from form
@@ -71,10 +87,15 @@ router.post("/oauth/authorize", (req, res) => {
     return res.status(400).send("An email account must be selected");
   }
 
+  // Verify account belongs to the authenticated user
+  const accounts = getAccountsByUser(req.session.userId);
+  if (!accounts.some(a => a.id === account_id)) {
+    return res.status(403).send("Account does not belong to you");
+  }
+
   const code = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-  const db = getDb();
   db.prepare(`
     INSERT INTO oauth_codes (code, client_id, user_id, account_id, redirect_uri, scopes, code_challenge, expires_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
