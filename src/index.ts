@@ -22,6 +22,11 @@ import "./types.js";
 
 const app = express();
 
+// Trust reverse proxy (needed for secure cookies behind nginx/caddy/traefik)
+if (config.baseUrl.startsWith("https")) {
+  app.set("trust proxy", 1);
+}
+
 // Security headers
 app.use((_req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");

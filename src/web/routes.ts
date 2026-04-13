@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { verifyUser, getUserById, createUser } from "../auth/users.js";
+import { verifyUser, getUserById, createUser, changePassword } from "../auth/users.js";
 import { getAccountsByUser, createAccount, deleteAccount } from "../imap/accounts.js";
 import { getDb } from "../db/database.js";
 import { layout } from "./views/layout.js";
@@ -146,6 +146,10 @@ router.get("/dashboard", requireLogin, (req, res) => {
         </table>
       ` : `<p>No active agent connections.</p>`}
     </div>
+
+    <div class="card">
+      <a href="/change-password" class="btn">Change Password</a>
+    </div>
   `, user.username));
 });
 
@@ -224,6 +228,47 @@ router.post("/tokens/:id/revoke", requireLogin, (req, res) => {
   db.prepare("UPDATE oauth_tokens SET revoked = 1 WHERE id = ? AND user_id = ?")
     .run(req.params.id, req.session.userId!);
   res.redirect("/dashboard");
+});
+
+// -- Change Password --
+router.get("/change-password", requireLogin, (req, res) => {
+  const error = req.query.error as string | undefined;
+  const success = req.query.success as string | undefined;
+  const user = getUserById(req.session.userId!)!;
+  res.send(layout("Change Password", `
+    <div class="card">
+      <h2>Change Password</h2>
+      ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
+      ${success ? `<div class="success" style="color:green;margin-bottom:12px;">${escapeHtml(success)}</div>` : ""}
+      <form method="POST" action="/change-password">
+        <label>Current Password</label>
+        <input type="password" name="current_password" required>
+        <label>New Password</label>
+        <input type="password" name="new_password" required minlength="8">
+        <label>Confirm New Password</label>
+        <input type="password" name="confirm_password" required minlength="8">
+        <button type="submit">Change Password</button>
+      </form>
+    </div>
+  `, user.username));
+});
+
+router.post("/change-password", requireLogin, (req, res) => {
+  const { current_password, new_password, confirm_password } = req.body;
+  const user = getUserById(req.session.userId!)!;
+
+  if (!verifyUser(user.username, current_password)) {
+    return res.redirect("/change-password?error=Current+password+is+incorrect");
+  }
+  if (!new_password || new_password.length < 8 || new_password.length > 128) {
+    return res.redirect("/change-password?error=New+password+must+be+8-128+characters");
+  }
+  if (new_password !== confirm_password) {
+    return res.redirect("/change-password?error=Passwords+do+not+match");
+  }
+
+  changePassword(user.id, new_password);
+  res.redirect("/change-password?success=Password+changed+successfully");
 });
 
 // -- Home redirect --

@@ -48,6 +48,12 @@ export function getUserById(id: string): User | null {
   return (db.prepare("SELECT * FROM users WHERE id = ?").get(id) as User) || null;
 }
 
+export function changePassword(userId: string, newPassword: string): void {
+  const db = getDb();
+  const password_hash = hashPassword(newPassword);
+  db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(password_hash, userId);
+}
+
 export function ensureDefaultUser(): void {
   const db = getDb();
   const count = db.prepare("SELECT COUNT(*) as c FROM users").get() as { c: number };
