@@ -1,6 +1,6 @@
 {
   "name": "imap-mcp-server",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Multi-agent multi-user HTTP IMAP bridge with OAuth 2.1 for MCP",
   "type": "module",
   "main": "dist/index.js",
