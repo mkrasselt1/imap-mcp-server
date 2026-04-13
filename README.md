@@ -23,6 +23,8 @@ A multi-agent, multi-user HTTP IMAP bridge that acts as a remote [MCP](https://m
 
 ## Quick Start with Docker
 
+> **Important:** The `-v` volume mount is required to persist your database (users, accounts, tokens) across container updates. Without it, all data is lost when the container is recreated.
+
 ```bash
 docker run -d \
   --name imap-bridge \
@@ -33,6 +35,8 @@ docker run -d \
   -e SESSION_SECRET=$(openssl rand -hex 32) \
   mkrasselt1/imap-mcp-server
 ```
+
+> **Tip:** Save your `ENCRYPTION_KEY` — if it changes, stored IMAP passwords become unrecoverable. Write it to an `.env` file or use Docker secrets.
 
 Or with Docker Compose:
 
