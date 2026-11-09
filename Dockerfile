@@ -1,5 +1,7 @@
 FROM node:24-slim AS build
 WORKDIR /app
+# Toolchain for native modules (better-sqlite3) in case no prebuilt binary matches this Node version
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
 COPY package*.json ./
 RUN npm ci
 COPY tsconfig.json ./
