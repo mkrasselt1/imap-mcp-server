@@ -1,8 +1,10 @@
 import { escapeHtml } from "./escapeHtml.js";
 
-export function layout(title: string, body: string, username?: string): string {
+export function layout(title: string, body: string, username?: string, csrfField = ""): string {
   return `<!DOCTYPE html>
 <html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)} - IMAP Bridge</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -27,6 +29,8 @@ export function layout(title: string, body: string, username?: string): string {
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #e5e7eb; }
   th { background: #f9fafb; font-weight: 600; }
+  .navlink { background: none; color: #93c5fd; padding: 0; margin: 0 0 0 16px; font-size: inherit; }
+  .navlink:hover { background: none; color: white; }
   .small { font-size: 12px; color: #6b7280; }
 </style>
 </head><body>
@@ -34,7 +38,7 @@ export function layout(title: string, body: string, username?: string): string {
   <strong>IMAP Bridge</strong>
   <div>
     ${username
-      ? `<span>${escapeHtml(username)}</span><a href="/dashboard">Dashboard</a><a href="/logout">Logout</a>`
+      ? `<span>${escapeHtml(username)}</span><a href="/dashboard">Dashboard</a>${csrfField ? `<form method="POST" action="/logout" style="display:inline;margin:0">${csrfField}<button type="submit" class="navlink">Logout</button></form>` : `<a href="/logout">Logout</a>`}`
       : `<a href="/login">Login</a>`
     }
   </div>

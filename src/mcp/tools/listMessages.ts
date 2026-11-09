@@ -1,6 +1,42 @@
 import { getImapClient } from "../../imap/client.js";
+import { mapAddresses, parseMessage, PREVIEW_FETCH_BYTES } from "../../imap/parse.js";
 import { checkPermission } from "../permissions.js";
 import type { TokenContext } from "../../types.js";
+
+export const PREVIEW_CHARS = 2000;
+
+/** Shared summary builder for list/search results. */
+export async function summarize(msg: any, includeBody: boolean) {
+  const entry: Record<string, unknown> = {
+    uid: msg.uid,
+    subject: msg.envelope?.subject || "(no subject)",
+    from: mapAddresses(msg.envelope?.from),
+    to: mapAddresses(msg.envelope?.to),
+    date: msg.envelope?.date ? new Date(msg.envelope.date).toISOString() : null,
+    flags: Array.from(msg.flags || []),
+    size: msg.size ?? null,
+    messageId: msg.envelope?.messageId || null,
+  };
+  if (includeBody) {
+    try {
+      const parsed = await parseMessage(msg.source, PREVIEW_CHARS);
+      entry.body = parsed.body;
+      entry.bodyTruncated = parsed.truncated || (msg.size ?? 0) > PREVIEW_FETCH_BYTES;
+      if (parsed.attachments.length) entry.attachments = parsed.attachments.map((a: any) => a.filename || a.contentType);
+    } catch {
+      entry.body = "(could not extract body)";
+    }
+  }
+  return entry;
+}
+
+export function fetchQuery(includeBody: boolean) {
+  const q: Record<string, unknown> = { envelope: true, flags: true, uid: true, size: true };
+  // Fetch the (partial) source in the same command. Issuing other IMAP commands inside a
+  // fetch loop (as before, via download()) can stall the connection.
+  if (includeBody) q.source = { maxLength: PREVIEW_FETCH_BYTES };
+  return q;
+}
 
 export async function listMessages(ctx: TokenContext, args: {
   folder?: string; page?: number; pageSize?: number; includeBody?: boolean;
@@ -8,59 +44,26 @@ export async function listMessages(ctx: TokenContext, args: {
   checkPermission(ctx.scopes, "mail:read");
   const client = await getImapClient(ctx.accountId);
   const folder = args.folder || "INBOX";
-  const page = args.page || 1;
-  const pageSize = Math.min(args.pageSize || 20, 50);
+  const page = Math.max(1, Math.floor(args.page || 1));
+  const pageSize = Math.min(Math.max(1, Math.floor(args.pageSize || 20)), 50);
   const includeBody = args.includeBody || false;
 
-  const lock = await client.getMailboxLock(folder);
+  const lock = await client.getMailboxLock(folder, { readOnly: true });
   try {
-    const mailbox = client.mailbox;
-    const total = mailbox ? (mailbox as any).exists || 0 : 0;
-
-    if (total === 0) {
-      return { messages: [], total, page, pageSize };
+    const total = client.mailbox ? client.mailbox.exists || 0 : 0;
+    const end = total - (page - 1) * pageSize;
+    if (total === 0 || end < 1) {
+      return { messages: [], total, page, pageSize, hasMore: false };
     }
+    const start = Math.max(1, end - pageSize + 1);
 
-    const start = Math.max(1, total - page * pageSize + 1);
-    const end = Math.max(1, total - (page - 1) * pageSize);
-
-    const fetchOptions: any = { envelope: true, flags: true, uid: true };
-    if (includeBody) fetchOptions.bodyStructure = true;
-
-    const messages: any[] = [];
-    for await (const msg of client.fetch(`${start}:${end}`, fetchOptions)) {
-      const entry: any = {
-        uid: (msg as any).uid,
-        seq: (msg as any).seq,
-        subject: (msg as any).envelope?.subject || "(no subject)",
-        from: (msg as any).envelope?.from?.map((a: any) => ({ name: a.name, address: a.address })) || [],
-        to: (msg as any).envelope?.to?.map((a: any) => ({ name: a.name, address: a.address })) || [],
-        date: (msg as any).envelope?.date?.toISOString() || null,
-        flags: Array.from((msg as any).flags || []),
-        messageId: (msg as any).envelope?.messageId || null,
-      };
-
-      if (includeBody) {
-        try {
-          const downloaded = await client.download(String((msg as any).uid), undefined, { uid: true });
-          if (downloaded?.content) {
-            const chunks: Buffer[] = [];
-            for await (const chunk of downloaded.content) {
-              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-            }
-            const text = Buffer.concat(chunks).toString("utf-8");
-            entry.body = text.slice(0, 2000);
-          }
-        } catch {
-          entry.body = "(could not extract body)";
-        }
-      }
-
-      messages.push(entry);
+    const raw: any[] = [];
+    for await (const msg of client.fetch(`${start}:${end}`, fetchQuery(includeBody) as any)) {
+      raw.push(msg);
     }
-
-    messages.reverse();
-    return { messages, total, page, pageSize };
+    const messages = [];
+    for (const msg of raw.reverse()) messages.push(await summarize(msg, includeBody));
+    return { messages, total, page, pageSize, hasMore: start > 1 };
   } finally {
     lock.release();
   }

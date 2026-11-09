@@ -78,6 +78,7 @@ declare module "express-session" {
   interface SessionData {
     userId?: string;
     returnTo?: string;
+    csrfToken?: string;
   }
 }
 

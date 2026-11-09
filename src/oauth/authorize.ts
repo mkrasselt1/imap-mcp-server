@@ -1,36 +1,55 @@
 import { Router } from "express";
-import { randomBytes } from "crypto";
+import type { Response } from "express";
 import { getDb } from "../db/database.js";
 import { getAccountsByUser } from "../imap/accounts.js";
 import { SCOPES } from "../types.js";
 import type { OAuthClient } from "../types.js";
 import { escapeHtml } from "../web/views/escapeHtml.js";
+import { csrfField, verifyCsrf } from "../web/csrf.js";
+import { CODE_CHALLENGE_RE } from "./pkce.js";
+import { hashToken, newToken } from "./tokenHash.js";
 
 const router = Router();
 
-router.get("/oauth/authorize", (req, res) => {
-  const { response_type, client_id, redirect_uri, scope, state, code_challenge, code_challenge_method } = req.query as Record<string, string>;
+type Params = { client_id: string; redirect_uri: string; state?: string; code_challenge: string; code_challenge_method: string };
 
-  if (response_type !== "code") {
+/** Validate the request against the registered client. Returns an error message or the client. */
+function validate(p: Partial<Params>): { error: string } | { client: OAuthClient } {
+  if (!p.client_id || !p.redirect_uri || !p.code_challenge) {
+    return { error: "Missing required parameters: client_id, redirect_uri, code_challenge" };
+  }
+  if (p.code_challenge_method && p.code_challenge_method !== "S256") {
+    return { error: "Only S256 code_challenge_method is supported" };
+  }
+  if (!CODE_CHALLENGE_RE.test(p.code_challenge)) {
+    return { error: "Invalid code_challenge" };
+  }
+  if (p.state !== undefined && (typeof p.state !== "string" || p.state.length > 1000)) {
+    return { error: "Invalid state" };
+  }
+  const client = getDb().prepare("SELECT * FROM oauth_clients WHERE client_id = ?").get(p.client_id) as OAuthClient | undefined;
+  if (!client) return { error: "Unknown client_id" };
+  const allowedUris: string[] = JSON.parse(client.redirect_uris);
+  if (!allowedUris.includes(p.redirect_uri)) return { error: "redirect_uri not registered for this client" };
+  return { client };
+}
+
+/** CSP form-action also governs the redirect after the consent form is submitted (Chrome). */
+function allowRedirectTarget(res: Response, redirectUri: string) {
+  const origin = new URL(redirectUri).origin;
+  res.setHeader(
+    "Content-Security-Policy",
+    `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${origin}; frame-ancestors 'none'`,
+  );
+}
+
+router.get("/oauth/authorize", (req, res) => {
+  const q = req.query as Record<string, string>;
+  if (q.response_type !== "code") {
     return res.status(400).send("Unsupported response_type. Must be 'code'.");
   }
-  if (!client_id || !redirect_uri || !code_challenge) {
-    return res.status(400).send("Missing required parameters: client_id, redirect_uri, code_challenge");
-  }
-  if (code_challenge_method && code_challenge_method !== "S256") {
-    return res.status(400).send("Only S256 code_challenge_method is supported");
-  }
-
-  const db = getDb();
-  const client = db.prepare("SELECT * FROM oauth_clients WHERE client_id = ?").get(client_id) as OAuthClient | undefined;
-  if (!client) {
-    return res.status(400).send("Unknown client_id");
-  }
-
-  const allowedUris: string[] = JSON.parse(client.redirect_uris);
-  if (!allowedUris.includes(redirect_uri)) {
-    return res.status(400).send("redirect_uri not registered for this client");
-  }
+  const v = validate(q);
+  if ("error" in v) return res.status(400).send(escapeHtml(v.error));
 
   // If not logged in, redirect to login with return URL
   if (!req.session.userId) {
@@ -39,79 +58,75 @@ router.get("/oauth/authorize", (req, res) => {
   }
 
   const accounts = getAccountsByUser(req.session.userId);
-  const requestedScopes = scope ? scope.split(" ") : Object.keys(SCOPES);
+  const requestedScopes = q.scope ? q.scope.split(" ") : Object.keys(SCOPES);
 
+  allowRedirectTarget(res, q.redirect_uri);
+  res.setHeader("Cache-Control", "no-store");
   res.send(renderConsentPage({
-    clientName: client.client_name || client.client_id,
+    clientName: v.client.client_name || v.client.client_id,
+    redirectHost: new URL(q.redirect_uri).host,
     requestedScopes,
     accounts,
-    query: { client_id, redirect_uri, state, code_challenge, code_challenge_method: code_challenge_method || "S256" },
+    csrf: csrfField(req),
+    query: {
+      client_id: q.client_id,
+      redirect_uri: q.redirect_uri,
+      state: q.state ?? "",
+      code_challenge: q.code_challenge,
+      code_challenge_method: "S256",
+    },
   }));
 });
 
-router.post("/oauth/authorize", (req, res) => {
+router.post("/oauth/authorize", verifyCsrf, (req, res) => {
   if (!req.session.userId) {
     return res.status(401).send("Not authenticated");
   }
 
-  const { client_id, redirect_uri, state, code_challenge, code_challenge_method, account_id } = req.body;
+  const p = req.body as Params & { account_id?: string; action?: string };
+  const v = validate(p);
+  if ("error" in v) return res.status(400).send(escapeHtml(v.error));
 
-  if (!client_id || !redirect_uri || !code_challenge) {
-    return res.status(400).send("Missing required parameters");
+  const redirectUrl = new URL(p.redirect_uri);
+  if (p.state) redirectUrl.searchParams.set("state", p.state);
+
+  if (p.action === "deny") {
+    redirectUrl.searchParams.set("error", "access_denied");
+    return res.redirect(redirectUrl.toString());
   }
 
-  // Validate client and redirect_uri match registration
-  const db = getDb();
-  const client = db.prepare("SELECT * FROM oauth_clients WHERE client_id = ?").get(client_id) as OAuthClient | undefined;
-  if (!client) {
-    return res.status(400).send("Unknown client_id");
-  }
-  const allowedUris: string[] = JSON.parse(client.redirect_uris);
-  if (!allowedUris.includes(redirect_uri)) {
-    return res.status(400).send("redirect_uri not registered for this client");
-  }
-
-  const grantedScopes: string[] = [];
-
-  // Collect checked scopes from form
-  for (const s of Object.keys(SCOPES)) {
-    if (req.body[`scope_${s}`]) {
-      grantedScopes.push(s);
-    }
-  }
-
+  const grantedScopes = Object.keys(SCOPES).filter((s) => req.body[`scope_${s}`]);
   if (grantedScopes.length === 0) {
     return res.status(400).send("At least one permission must be granted");
   }
-  if (!account_id) {
+  if (!p.account_id) {
     return res.status(400).send("An email account must be selected");
   }
 
-  // Verify account belongs to the authenticated user
+  // Verify the account belongs to the authenticated user
   const accounts = getAccountsByUser(req.session.userId);
-  if (!accounts.some(a => a.id === account_id)) {
+  if (!accounts.some((a) => a.id === p.account_id)) {
     return res.status(403).send("Account does not belong to you");
   }
 
-  const code = randomBytes(32).toString("hex");
+  const code = newToken();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-  db.prepare(`
+  getDb().prepare(`
     INSERT INTO oauth_codes (code, client_id, user_id, account_id, redirect_uri, scopes, code_challenge, expires_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(code, client_id, req.session.userId, account_id, redirect_uri, grantedScopes.join(" "), code_challenge, expiresAt);
+  `).run(hashToken(code), p.client_id, req.session.userId, p.account_id, p.redirect_uri, grantedScopes.join(" "), p.code_challenge, expiresAt);
 
-  const redirectUrl = new URL(redirect_uri);
   redirectUrl.searchParams.set("code", code);
-  if (state) redirectUrl.searchParams.set("state", state);
-
   res.redirect(redirectUrl.toString());
 });
 
 function renderConsentPage(opts: {
   clientName: string;
+  redirectHost: string;
   requestedScopes: string[];
-  accounts: { id: string; label: string }[];
+  accounts: { id: string; label: string; username: string }[];
+  csrf: string;
   query: Record<string, string>;
 }): string {
   const scopeCheckboxes = opts.requestedScopes
@@ -123,7 +138,7 @@ function renderConsentPage(opts: {
     .join("\n");
 
   const accountOptions = opts.accounts
-    .map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.label)}</option>`)
+    .map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.label)} (${escapeHtml(a.username)})</option>`)
     .join("\n");
 
   const hiddenFields = Object.entries(opts.query)
@@ -131,7 +146,8 @@ function renderConsentPage(opts: {
     .join("\n");
 
   return `<!DOCTYPE html>
-<html><head><title>Authorize Access</title>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authorize Access</title>
 <style>
   body { font-family: -apple-system, sans-serif; max-width: 500px; margin: 60px auto; padding: 20px; }
   .card { border: 1px solid #ddd; border-radius: 8px; padding: 24px; }
@@ -139,14 +155,19 @@ function renderConsentPage(opts: {
   button { background: #2563eb; color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer; font-size: 16px; margin-top: 16px; }
   button:hover { background: #1d4ed8; }
   select { width: 100%; padding: 8px; margin-top: 4px; border-radius: 4px; border: 1px solid #ccc; }
-  .deny { background: #dc2626; margin-left: 8px; }
+  .deny { background: #6b7280; margin-left: 8px; }
+  .deny:hover { background: #4b5563; }
+  .host { font-family: monospace; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; }
 </style>
 </head><body>
 <div class="card">
   <h2>Authorize Access</h2>
   <p><strong>${escapeHtml(opts.clientName)}</strong> wants to access your email.</p>
+  <p style="font-size:13px;color:#555;">After approval you will be sent to <span class="host">${escapeHtml(opts.redirectHost)}</span>.
+  Only continue if you started this connection yourself.</p>
 
   <form method="POST" action="/oauth/authorize">
+    ${opts.csrf}
     ${hiddenFields}
 
     <h3>Select Email Account</h3>
@@ -159,7 +180,8 @@ function renderConsentPage(opts: {
     ${scopeCheckboxes}
 
     <div style="margin-top:20px;">
-      <button type="submit">Authorize</button>
+      <button type="submit" name="action" value="allow">Authorize</button>
+      <button type="submit" name="action" value="deny" class="deny" formnovalidate>Deny</button>
     </div>
   </form>
 </div>
