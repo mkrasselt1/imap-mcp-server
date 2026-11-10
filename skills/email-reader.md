@@ -40,6 +40,14 @@ Lists all mailbox folders. No arguments needed.
 - `folder` (optional): Folder path, defaults to "INBOX"
 - `uid` (required): Message UID from list_messages
 
+### read_attachment
+- `folder` (optional): Folder path, defaults to "INBOX"
+- `uid` (required): Message UID
+- `index` (optional): Attachment index from the attachment list of read_message (0-based)
+- `filename` (optional): Attachment filename instead of index (exact or partial match)
+- `maxChars` (optional): Max. characters of extracted text
+PDFs are returned as text, images as images, text files decoded.
+
 ### search_messages
 - `query` (optional): Search text
 - `from` (optional): Filter by sender

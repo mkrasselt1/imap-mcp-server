@@ -5,6 +5,8 @@ import type { AddressObject } from "mailparser";
 export const PREVIEW_FETCH_BYTES = 256 * 1024;
 /** Max. raw bytes parsed for read_message (larger mails are read partially; attachments are skipped anyway). */
 export const READ_FETCH_BYTES = 10 * 1024 * 1024;
+/** Max. raw bytes fetched for read_attachment (the whole message must be parsed to get at a part). */
+export const ATTACHMENT_FETCH_BYTES = 30 * 1024 * 1024;
 /** Max. characters of body text returned by read_message. */
 export const MAX_BODY_CHARS = 100_000;
 
@@ -40,7 +42,8 @@ export async function parseMessage(source: Buffer | undefined, maxChars: number)
     truncated,
     replyTo: flattenAddressObject(parsed.replyTo),
     references: refs ? (Array.isArray(refs) ? refs : [refs]) : undefined,
-    attachments: (parsed.attachments || []).map((att) => ({
+    attachments: (parsed.attachments || []).map((att, index) => ({
+      index,
       filename: att.filename || null,
       contentType: att.contentType,
       size: att.size,

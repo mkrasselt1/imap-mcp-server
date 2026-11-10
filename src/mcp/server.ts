@@ -6,6 +6,7 @@ import type { TokenContext } from "../types.js";
 import { listFolders } from "./tools/listFolders.js";
 import { listMessages } from "./tools/listMessages.js";
 import { readMessage } from "./tools/readMessage.js";
+import { readAttachment } from "./tools/readAttachment.js";
 import { searchMessages } from "./tools/searchMessages.js";
 import { moveMessage } from "./tools/moveMessage.js";
 import { flagMessage } from "./tools/flagMessage.js";
@@ -26,10 +27,12 @@ function result(data: unknown) {
  * Wrap a tool so errors are returned as MCP tool errors (isError) instead of protocol errors,
  * and the current token context (refreshed on every HTTP request) is resolved per call.
  */
-function tool<A>(getCtx: () => TokenContext, fn: (ctx: TokenContext, args: A) => Promise<unknown>) {
-  return async (args: A) => {
+function tool<A>(getCtx: () => TokenContext, fn: (ctx: TokenContext, args: A) => Promise<unknown>, raw = false) {
+  return async (args: A): Promise<any> => {
     try {
-      return result(await fn(getCtx(), args));
+      const data = await fn(getCtx(), args);
+      // raw tools already return MCP content (e.g. images), everything else is serialized as JSON
+      return raw ? data : result(data);
     } catch (e: any) {
       return { content: [{ type: "text" as const, text: `Error: ${e?.message || String(e)}` }], isError: true };
     }
@@ -67,6 +70,21 @@ export function createMcpServer(getCtx: () => TokenContext): McpServer {
       uids: z.array(uid).max(10).optional().describe("Multiple message UIDs to read at once (max 10)"),
     },
     tool(getCtx, readMessage),
+  );
+
+  server.tool(
+    "read_attachment",
+    "Read the content of an email attachment. PDFs are returned as extracted text, text files (txt, csv, json, xml, html, ics) as decoded text, " +
+      "images as image content, other files as base64 resource (max 5 MB). " +
+      "Get 'index' from the attachment list of read_message. Does not mark the message as read.",
+    {
+      folder: folder.optional().default("INBOX").describe("Mailbox folder path"),
+      uid: uid.describe("Message UID"),
+      index: z.number().int().min(0).optional().describe("Attachment index (0-based) as listed by read_message"),
+      filename: z.string().max(500).optional().describe("Attachment filename (alternative to index; exact or partial match)"),
+      maxChars: z.number().int().min(100).max(100_000).optional().describe("Max. characters of extracted text (default 100000)"),
+    },
+    tool(getCtx, readAttachment, true),
   );
 
   server.tool(

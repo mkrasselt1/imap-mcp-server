@@ -140,6 +140,7 @@ Claude.ai                          IMAP Bridge                    User
 | `list_folders` | `mail:folders` | List all mailbox folders |
 | `list_messages` | `mail:read` | List messages with pagination. Supports `includeBody` to fetch message content inline. |
 | `read_message` | `mail:read` | Read full message by UID: decoded text body (HTML-only mails converted to text), attachment list, reply-to/references. Supports `uids` to batch-read up to 10 messages. Does not mark messages as read. |
+| `read_attachment` | `mail:read` | Read an attachment by `index` (from `read_message`) or `filename`: PDFs as extracted text, text formats (txt/csv/json/xml/html/ics) decoded, images as image content, other files as base64 resource (max 5 MB). Does not mark messages as read. |
 | `search_messages` | `mail:search` | Search by sender, date, subject, body. Supports `includeBody` to fetch message content inline. |
 | `move_message` | `mail:modify` | Move message between folders |
 | `flag_message` | `mail:modify` | Set read/unread, star, delete flags |
@@ -172,6 +173,11 @@ npm start       # run compiled output
 - **SMTP** — with TLS enabled, STARTTLS is required (no silent downgrade to plain text)
 
 ## Changelog
+
+### 1.3.0
+- New tool `read_attachment`: reads attachment content (PDF text extraction via `unpdf`, decoded text files,
+  images as MCP image content, other files as base64 resource up to 5 MB).
+- `read_message` attachment list now includes an `index` for use with `read_attachment`.
 
 ### 1.2.0
 - Security: hashed tokens/codes, atomic code redemption and refresh rotation, CSRF tokens, login/registration
